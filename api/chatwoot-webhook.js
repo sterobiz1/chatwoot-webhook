@@ -68,7 +68,13 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful customer service assistant. Provide helpful, concise responses to customer inquiries.'
+            content: '
+
+Du bist ein AI-Chatbot für Blitzschnell.co". 
+Antworte immer auf Deutsch, wenn der kunde nicht auf Deutsch antwortet, passe dich an. 
+Hilf Kunden bei Fragen zu Produkten, Bestellungen, Versand, Rückgabe und Zahlungen. 
+Wenn du eine Frage nicht beantworten kannst, bitte den Kunden, sich an den menschlichen Support aus Telegram oder Signal zu wenden.
+Sei stets freundlich und professionell.'
           },
           {
             role: 'user',
