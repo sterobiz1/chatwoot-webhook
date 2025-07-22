@@ -1,4 +1,115 @@
 // api/chatwoot-webhook.js
+
+// Helper function to fetch products from WooCommerce with better filtering
+async function fetchWooCommerceProducts(searchQuery = '', category = '', limit = 20) {
+  const wcApiUrl = new URL('https://blitzschnell.co/wp-json/wc/v3/products');
+  
+  // Set query parameters
+  wcApiUrl.searchParams.set('per_page', limit.toString());
+  wcApiUrl.searchParams.set('status', 'publish');
+  
+  if (searchQuery) {
+    wcApiUrl.searchParams.set('search', searchQuery);
+  }
+  
+  if (category) {
+    wcApiUrl.searchParams.set('category', category);
+  }
+
+  const wcUser = process.env.WC_CONSUMER_KEY;
+  const wcPass = process.env.WC_CONSUMER_SECRET;
+  const wcAuth = Buffer.from(`${wcUser}:${wcPass}`).toString('base64');
+
+  try {
+    const wcResponse = await fetch(wcApiUrl.toString(), {
+      headers: {
+        'Authorization': `Basic ${wcAuth}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!wcResponse.ok) {
+      throw new Error(`WooCommerce API error: ${wcResponse.status} ${wcResponse.statusText}`);
+    }
+
+    const products = await wcResponse.json();
+    
+    // Enhanced product summary with more details
+    const productSummary = products.map(p => {
+      const cleanDescription = (p.short_description || '').replace(/<[^>]+>/g, '').trim();
+      const price = p.price ? `${p.price}€` : 'Preis auf Anfrage';
+      const stockStatus = p.stock_status === 'instock' ? '✅ Verfügbar' : '❌ Nicht verfügbar';
+      
+      return `• ${p.name} (${price}) - ${stockStatus}\n  ${cleanDescription}`;
+    }).join('\n\n');
+
+    return {
+      success: true,
+      products,
+      productSummary: productSummary || 'Keine Produkte gefunden.',
+      count: products.length
+    };
+  } catch (error) {
+    console.error('WooCommerce fetch error:', error);
+    return {
+      success: false,
+      productSummary: 'Produktinformationen konnten nicht geladen werden.',
+      error: error.message,
+      count: 0
+    };
+  }
+}
+
+// Helper function to get product by specific ID
+async function fetchProductById(productId) {
+  const wcApiUrl = `https://blitzschnell.co/wp-json/wc/v3/products/${productId}`;
+  const wcUser = process.env.WC_CONSUMER_KEY;
+  const wcPass = process.env.WC_CONSUMER_SECRET;
+  const wcAuth = Buffer.from(`${wcUser}:${wcPass}`).toString('base64');
+
+  try {
+    const wcResponse = await fetch(wcApiUrl, {
+      headers: {
+        'Authorization': `Basic ${wcAuth}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!wcResponse.ok) {
+      throw new Error(`Product not found: ${wcResponse.status}`);
+    }
+
+    return await wcResponse.json();
+  } catch (error) {
+    console.error('Product fetch error:', error);
+    return null;
+  }
+}
+
+// Helper function to extract product search intent from message
+function extractProductIntent(message) {
+  const lowerMessage = message.toLowerCase();
+  
+  // Common product keywords
+  const productKeywords = [
+    'testosteron', 'test', 'tren', 'trenbolon', 'anavar', 'winstrol', 'dbol',
+    'dianabol', 'deca', 'equipoise', 'masteron', 'primo', 'primobolan',
+    'hgh', 'wachstumshormon', 'peptid', 'fatburner', 'clenbuterol',
+    'medipharma', 'akra labs', 'global pharma', 'steroide', 'tabletten'
+  ];
+  
+  // Extract search terms
+  const searchTerms = productKeywords.filter(keyword => 
+    lowerMessage.includes(keyword)
+  );
+  
+  return {
+    hasProductIntent: searchTerms.length > 0,
+    searchTerms,
+    searchQuery: searchTerms.join(' ')
+  };
+}
+
 export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -54,34 +165,62 @@ export default async function handler(req, res) {
       sender_email: webhook.sender.email
     };
 
-    // === Fetch product data from WooCommerce REST API ===
-    const wcApiUrl = 'https://blitzschnell.co/wp-json/wc/v3/products?per_page=10'; // adjust per_page as needed
-    const wcUser = process.env.WC_CONSUMER_KEY;
-    const wcPass = process.env.WC_CONSUMER_SECRET;
-    const wcAuth = Buffer.from(`${wcUser}:${wcPass}`).toString('base64');
-    let productSummary = '';
-    try {
-      const wcResponse = await fetch(wcApiUrl, {
-        headers: {
-          'Authorization': `Basic ${wcAuth}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      if (wcResponse.ok) {
-        const products = await wcResponse.json();
-        // Summarize product info for the prompt
-        productSummary = products.map(p =>
-          `• ${p.name}: ${(p.short_description || '').replace(/<[^>]+>/g, '')}`
-        ).join('\n');
-      } else {
-        productSummary = 'Produktinformationen konnten nicht geladen werden.';
-      }
-    } catch (err) {
-      productSummary = 'Produktinformationen konnten nicht geladen werden.';
+    // === Enhanced WooCommerce product fetching ===
+    console.log("Fetching product information...");
+    
+    // Extract product intent from message
+    const productIntent = extractProductIntent(filterData.message_content);
+    console.log("Product intent:", productIntent);
+    
+    let productData;
+    
+    if (productIntent.hasProductIntent) {
+      // Fetch specific products based on search terms
+      console.log("Searching for specific products:", productIntent.searchQuery);
+      productData = await fetchWooCommerceProducts(productIntent.searchQuery, '', 15);
+    } else {
+      // Fetch general product overview (fewer products for general queries)
+      console.log("Fetching general product overview");
+      productData = await fetchWooCommerceProducts('', '', 8);
     }
-    // === END WooCommerce fetch ===
+    
+    console.log(`Product fetch result: ${productData.success ? 'Success' : 'Failed'}, Count: ${productData.count}`);
+    
+    // === END Enhanced WooCommerce fetch ===
 
-    // Step 2: Call OpenAI API
+    // Step 2: Call OpenAI API with enhanced product context
+    const systemPrompt = `
+Du bist ein freundlicher First-Layer-Support-Bot für blitzschnell.co (Steroide, Peptide, Wachstumshormone, Fatburner, Sex Support). Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Empfehle Produkte aus blitzschnell.co, priorisiere Medipharma (hochwertige Wirkstoffe, höchste Reinheit). Antworten kurz, freundlich, starte mit "Moin!", ende mit "Kann ich noch etwas für dich tun?" und nutze Emojis wo passend.
+Antworte immer auf Deutsch, es sei denn, der Kunde schreibt in einer anderen Sprache.
+
+=== AKTUELLE PRODUKTINFORMATIONEN ===
+${productData.productSummary}
+
+${productData.count > 0 ? `(${productData.count} Produkte geladen${productIntent.hasProductIntent ? ' basierend auf deiner Suchanfrage' : ''})` : ''}
+=== ENDE PRODUKTINFORMATIONEN ===
+
+Versand: Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU).
+Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage.
+Mehrfachkosten bei verschiedenen Marken/Lagern.
+
+Zahlung: Bitcoin, XMR, andere Cryptos; alternativ Ramp.network (Kreditkarte, Apple Pay, Überweisung – 100% anonym, Anleitung: blitzschnell.co/zahlungsarten).
+
+Hilfe via Blitz: Signal (blitzschnell.66), Telegram (blitzschnell66), Email (blitzschnell66@proton.me). Sonderlösungen möglich.
+
+Datenschutz: Shop nicht greifbar für EU-Behörden; Daten nach 2 Wochen gelöscht.
+Keine Anmeldung; nur anonyme Zahlungen für max. IT-Sicherheit.
+
+Produkte: Betone Vorteile (z.B. Muskelaufbau, Regeneration). Priorisiere Medipharma (z.B. Testomed Enan 250 für Gains, Trenomed Ace 100 für Definition).
+Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking.
+Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50).
+
+Weiterleitung: Bei Unklarheiten (z.B. Dosierungen): Zu Blitz leiten (Signal blitzschnell.66, Telegram blitzschnell66, Email: blitzschnell66@proton.me) oder Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk.
+
+Paketstatus: Frage nach Bestellnummer; Status in Email. Sonst zu Blitz.
+
+Antworte nur mit diesen Infos. Verweise niemals auf andere Shops. Bei Fragen ob wir Dark sind, nein. Dark ist ein Bekannter. Wir arbeiten mit anderen Shopbetreibern zusammen.
+`;
+
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -93,36 +232,14 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: `
-Du bist ein freundlicher First-Layer-Support-Bot für blitzschnell.co (Steroide, Peptide, Wachstumshormone, Fatburner, Sex Support). Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Empfehle Produkte aus blitzschnell.co, priorisiere Medipharma (hochwertige Wirkstoffe, höchste Reinheit). Antworten kurz, freundlich, starte mit "Moin!", ende mit "Kann ich noch etwas für dich tun?" und nutze Emojis wo passend.
-Antworte immer auf Deutsch, es sei denn, der Kunde schreibt in einer anderen Sprache.
-Hier sind die aktuellen Produktinformationen: ${productSummary}
-
-Versand:Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU).
-Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage.
-Mehrfachkosten bei verschiedenen Marken/Lagern.
-Zahlung:Bitcoin, XMR, andere Cryptos; alternativ Ramp.network (Kreditkarte, Apple Pay, Überweisung – 100% anonym, Anleitung: blitzschnell.co/zahlungsarten).
-Hilfe via Blitz: Signal/Telegram (@Blitzschnell66), Email (Blitzschnell66@proton.me). Sonderlösungen möglich.
-Datenschutz: Shop nicht greifbar für EU-Behörden; Daten nach 2 Wochen gelöscht.
-Keine Anmeldung; nur anonyme Zahlungen für max. IT-Sicherheit.
-Produkte: Betone Vorteile (z.B. Muskelaufbau, Regeneration). Priorisiere Medipharma (z.B. Testomed Enan 250 für Gains, Trenomed Ace 100 für Definition).
-Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking.
-Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50).
-Weiterleitung:
-
-Bei Unklarheiten (z.B. Dosierungen): Zu Blitz leiten (Signal blitzschnell.66, Telegram blitzschnell66, Email: blitzschnell66@proton.me) oder Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk.
-Paketstatus:
-
-Frage nach Bestellnummer; Status in Email. Sonst zu Blitz.
-Antworte nur mit diesen Infos. Verweise niemals auf andere Shops. Bei Fragen ob wir Dark sind, nein. Dark ist ein Bekannter. Wir arbeiten mit anderen Shopbetreibern zusammen.
-`
+            content: systemPrompt
           },
           {
             role: 'user',
             content: filterData.message_content
           }
         ],
-        max_tokens: 500,
+        max_tokens: 600,
         temperature: 0.2
       })
     });
@@ -167,7 +284,13 @@ Antworte nur mit diesen Infos. Verweise niemals auf andere Shops. Bei Fragen ob 
       success: true,
       message_sent: aiResponse,
       chatwoot_response: chatwootData,
-      original_message: filterData.message_content
+      original_message: filterData.message_content,
+      product_data: {
+        intent_detected: productIntent.hasProductIntent,
+        search_terms: productIntent.searchTerms,
+        products_found: productData.count,
+        wc_api_success: productData.success
+      }
     });
 
   } catch (error) {
