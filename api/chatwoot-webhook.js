@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { decode } from 'html-entities'; // Install with: npm install html-entities
 
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -55,57 +54,56 @@ export default async function handler(req, res) {
 
     // Step 2: Read and parse products.json
     const productsFilePath = path.join(process.cwd(), 'data', 'products.json');
-    let products = [];
+    let products;
     try {
       const productsData = fs.readFileSync(productsFilePath, 'utf-8');
       products = JSON.parse(productsData);
     } catch (error) {
       console.error('Error reading or parsing products.json:', error);
+      products = []; // Fallback to empty array if file read fails
     }
 
     // Step 3: Extract keywords from user message
     const keywords = filterData.message_content.toLowerCase().split(/\s+/);
 
     // Step 4: Filter relevant products
-    const relevantProducts = products
-      .filter(product => {
-        if (!product.name || !product.description) return false;
-        const productText = [
-          product.name,
-          decode(product.description.replace(/<[^>]*>/g, '')), // Decode HTML entities and strip tags
-          ...(product.attributes && Array.isArray(product.attributes)
-            ? product.attributes.flatMap(attr => (attr.options && Array.isArray(attr.options) ? attr.options : []))
-            : [])
-        ].join(' ').toLowerCase();
-        return keywords.some(keyword => productText.includes(keyword));
-      })
-      .slice(0, 3); // Limit to top 3 products
+    const relevantProducts = products.filter(product => {
+      const productText = [
+        product.name,
+        product.description,
+        ...(product.attributes ? product.attributes.flatMap(attr => attr.options) : [])
+      ].join(' ').toLowerCase();
+      return keywords.some(keyword => productText.includes(keyword));
+    }).slice(0, 3); // Limit to top 3 products
 
-    // Step 5: Build product context as a bullet list
+    // Step 5: Build product context for OpenAI prompt
     const productContext = relevantProducts.length
-      ? relevantProducts
-          .map(p => {
-            const cleanDescription = decode(p.description.replace(/<[^>]*>/g, '')); // Decode HTML entities
-            const priceInfo = p.sale_price && p.sale_price < p.regular_price
-              ? `€${p.sale_price} (Normalpreis: €${p.regular_price})`
-              : `€${p.price || 'N/A'}`;
-            return `- **${p.name}** - ${priceInfo}\n  Beschreibung: ${cleanDescription.slice(0, 100)}...\n  Link: ${p.permalink || 'N/A'}`;
-          })
-          .join('\n')
-      : 'Keine passenden Produkte gefunden. Kontaktiere mich auf Telegram: https://t.me/blitzschnell66 😔';
+      ? relevantProducts.map(p => {
+          const cleanDescription = p.description.replace(/<[^>]*>/g, ''); // Remove HTML tags
+          const priceInfo = p.sale_price && p.sale_price < p.regular_price
+            ? `€${p.sale_price} (Normalpreis: €${p.regular_price})`
+            : `€${p.price}`;
+          return `${p.name} - ${priceInfo}\nBeschreibung: ${cleanDescription.slice(0, 100)}...\nLink: ${p.permalink}`;
+        }).join('\n\n')
+      : 'Keine passenden Produkte gefunden.';
 
-    // Step 6: Define system prompt with product context
+    // Step 6: Call OpenAI API with updated system prompt
     const systemPrompt = `
       Du bist ein First-Layer-Support-Bot für blitzschnell.co, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. 
-      Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen. Verwende Emojis wo passend. 😊
+      Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). 
+      Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen. 
+      Verwende Emojis wo passend. 
 
       **Produktempfehlungen:**
-      - Nutze die folgenden Produktinformationen, um Vorteile (z.B. Muskelaufbau, Regeneration) zu betonen, und füge immer den Permalink aus der /data/products.json zum entsprechen Produkt hinzu hinzu:
+      - Priorisiere Medipharma (z.B. Testomed Enan 250 für Muskelaufbau, Trenomed Ace 100 für Definition).
+      - Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking.
+      - Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50).
+      - Nutze die folgenden Produktinformationen, um Vorteile (z.B. Muskelaufbau, Regeneration) zu betonen, und füge immer den Permalink hinzu:
       ${productContext}
 
       **Versand:**
       - Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU).
-      - Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage.
+      - Versand in 24h4200h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage.
       - Mehrfachkosten bei verschiedenen Marken/Lagern.
 
       **Zahlung:**
@@ -113,8 +111,8 @@ export default async function handler(req, res) {
 
       **Kontakt & Hilfe:**
       - 📱 Telegram: https://t.me/blitzschnell66
-      - 📞 Signal: https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB
-      - 📧 Email: blitzschnell66@proton.me
+      - 📞 Signal: https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB (blitzschnell.66)
+      - 📧 Email: [blitzschnell66@proton.me](mailto:blitzschnell66@proton.me)
       - 👥 Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk
 
       **Datenschutz:**
@@ -122,15 +120,19 @@ export default async function handler(req, res) {
       - Keine Anmeldung; nur anonyme Zahlungen für maximale IT-Sicherheit.
 
       **Weiterleitung bei Unklarheiten (z.B. Dosierungen):**
-      - Leite an Blitz weiter über Telegram, Signal, Email oder Telegram-Gruppe (siehe oben).
+      - Leite an Blitz weiter über:
+        - Telegram: https://t.me/blitzschnell66
+        - Signal: https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB
+        - Email: [blitzschnell66@proton.me](mailto:blitzschnell66@proton.me)
+        - Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk
 
       **Paketstatus:**
       - Frage nach Bestellnummer; Status in Email.
       - Sonst weiterleiten an Blitz über obige Kontakte.
     `;
 
-    // Step 7: Call OpenAI API
     console.log("Processing message:", filterData.message_content);
+
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -140,8 +142,14 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'gpt-4',
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: filterData.message_content }
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: filterData.message_content
+          }
         ],
         max_tokens: 500,
         temperature: 0.5
@@ -157,7 +165,7 @@ export default async function handler(req, res) {
 
     console.log("AI Response:", aiResponse);
 
-    // Step 8: Send response back to Chatwoot
+    // Step 7: Send response back to Chatwoot
     const chatwootApiUrl = "https://app.chatwoot.com";
     const accessToken = process.env.CHATWOOT_ACCESS_TOKEN;
 
