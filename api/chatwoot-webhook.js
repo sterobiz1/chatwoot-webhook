@@ -110,7 +110,7 @@ Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking.
 Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50).
 Weiterleitung:
 
-Bei Unklarheiten (z.B. Dosierungen): Zu Blitz leiten (Signal/Telegram @Blitzschnell66, Email Blitzschnell66@proton.me) oder Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk.
+Bei Unklarheiten (z.B. Dosierungen): Zu Blitz leiten (Signal blitzschnell.66, Telegram blitzschnell66, Email: blitzschnell66@proton.me) oder Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk.
 Paketstatus:
 
 Frage nach Bestellnummer; Status in Email. Sonst zu Blitz.
