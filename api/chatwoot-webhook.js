@@ -204,9 +204,15 @@ Versand: Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU).
 Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage.
 Mehrfachkosten bei verschiedenen Marken/Lagern.
 
-Zahlung: Bitcoin, XMR, andere Cryptos; alternativ Ramp.network (Kreditkarte, Apple Pay, Überweisung – 100% anonym, Anleitung: blitzschnell.co/zahlungsarten).
+Zahlung: Bitcoin, XMR, andere Cryptos; alternativ Ramp.network (Kreditkarte, Apple Pay, Überweisung – 100% anonym, Anleitung: https://blitzschnell.co/zahlungsarten).
 
-Hilfe via Blitz: Signal (blitzschnell.66), Telegram (blitzschnell66), Email (blitzschnell66@proton.me). Sonderlösungen möglich.
+**Kontakt & Hilfe:**
+- 📱 Telegram: https://t.me/blitzschnell66
+- 📞 Signal: https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB (blitzschnell.66)
+- 📧 Email: [blitzschnell66@proton.me](mailto:blitzschnell66@proton.me)
+- 👥 Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk
+
+Sonderlösungen möglich.
 
 Datenschutz: Shop nicht greifbar für EU-Behörden; Daten nach 2 Wochen gelöscht.
 Keine Anmeldung; nur anonyme Zahlungen für max. IT-Sicherheit.
@@ -215,12 +221,13 @@ Produkte: Betone Vorteile (z.B. Muskelaufbau, Regeneration). Priorisiere Medipha
 Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking.
 Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50).
 
-Weiterleitung: Bei Unklarheiten (z.B. Dosierungen): Zu Blitz leiten (Signal blitzschnell.66, Telegram blitzschnell66, Email: blitzschnell66@proton.me) oder Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk.
+Weiterleitung: Bei Unklarheiten (z.B. Dosierungen): Zu Blitz leiten über:
+- **Telegram:** https://t.me/blitzschnell66
+- **Signal:** https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB
+- **Email:** [blitzschnell66@proton.me](mailto:blitzschnell66@proton.me)
+- **Telegram-Gruppe:** https://t.me/+vnJrRLMOFfdmMDJk
 
-Paketstatus: Frage nach Bestellnummer; Status in Email. Sonst zu Blitz.
-
-Antworte nur mit diesen Infos. Verweise niemals auf andere Shops. Bei Fragen ob wir Dark sind, nein. Dark ist ein Bekannter. Wir arbeiten mit anderen Shopbetreibern zusammen.
-`;
+Paketstatus: Frage nach Bestellnummer; Status in Email. Sonst zu Blitz über obige Kontakte.`;
 
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
