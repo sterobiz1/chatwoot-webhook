@@ -1,12 +1,15 @@
 // api/chatwoot-webhook.js
 
-// Helper function to fetch products from WooCommerce with better filtering
-async function fetchWooCommerceProducts(searchQuery = '', category = '', limit = 20) {
+// Helper function to fetch products from WooCommerce with pagination and specific fields
+async function fetchWooCommerceProducts(searchQuery = '', category = '', limit = 100) {
+  const products = [];
+  let page = 1;
   const wcApiUrl = new URL('https://blitzschnell.co/wp-json/wc/v3/products');
   
   // Set query parameters
-  wcApiUrl.searchParams.set('per_page', limit.toString());
+  wcApiUrl.searchParams.set('per_page', limit.toString()); // Max 100 per WooCommerce API
   wcApiUrl.searchParams.set('status', 'publish');
+  wcApiUrl.searchParams.set('_fields', 'id,name,description,permalink,price,regular_price,sale_price,tags,attributes');
   
   if (searchQuery) {
     wcApiUrl.searchParams.set('search', searchQuery);
@@ -21,26 +24,42 @@ async function fetchWooCommerceProducts(searchQuery = '', category = '', limit =
   const wcAuth = Buffer.from(`${wcUser}:${wcPass}`).toString('base64');
 
   try {
-    const wcResponse = await fetch(wcApiUrl.toString(), {
-      headers: {
-        'Authorization': `Basic ${wcAuth}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    while (true) {
+      wcApiUrl.searchParams.set('page', page.toString());
+      const wcResponse = await fetch(wcApiUrl.toString(), {
+        headers: {
+          'Authorization': `Basic ${wcAuth}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-    if (!wcResponse.ok) {
-      throw new Error(`WooCommerce API error: ${wcResponse.status} ${wcResponse.statusText}`);
+      if (!wcResponse.ok) {
+        throw new Error(`WooCommerce API error: ${wcResponse.status} ${wcResponse.statusText}`);
+      }
+
+      const pageProducts = await wcResponse.json();
+      products.push(...pageProducts);
+
+      // Stop if fewer than `limit` products are returned (last page)
+      if (pageProducts.length < limit) break;
+      page++;
     }
 
-    const products = await wcResponse.json();
-    
-    // Enhanced product summary with more details
+    // Enhanced product summary with additional fields
     const productSummary = products.map(p => {
-      const cleanDescription = (p.short_description || '').replace(/<[^>]+>/g, '').trim();
+      const cleanDescription = (p.description || '').replace(/<[^>]+>/g, '').trim() || 'Keine Beschreibung verfügbar';
       const price = p.price ? `${p.price}€` : 'Preis auf Anfrage';
-      const stockStatus = p.stock_status === 'instock' ? '✅ Verfügbar' : '❌ Nicht verfügbar';
+      const regularPrice = p.regular_price ? `${p.regular_price}€` : 'N/A';
+      const salePrice = p.sale_price ? `${p.sale_price}€` : 'N/A';
+      const tags = p.tags?.length ? p.tags.map(t => t.name).join(', ') : 'Keine Tags';
+      const attributes = p.attributes?.length ? p.attributes.map(a => `${a.name}: ${a.options.join(', ')}`).join('; ') : 'Keine Attribute';
       
-      return `• ${p.name} (${price}) - ${stockStatus}\n  ${cleanDescription}`;
+      return `• ${p.name} (ID: ${p.id})\n` +
+             `  Preis: ${price} (Regulär: ${regularPrice}, Angebot: ${salePrice})\n` +
+             `  Beschreibung: ${cleanDescription}\n` +
+             `  Link: ${p.permalink}\n` +
+             `  Tags: ${tags}\n` +
+             `  Attribute: ${attributes}`;
     }).join('\n\n');
 
     return {
@@ -111,7 +130,21 @@ function extractProductIntent(message) {
 }
 
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // Test endpoint for fetching products
+  if (req.method === 'GET' && req.query.test === 'products') {
+    const searchQuery = req.query.search || '';
+    const category = req.query.category || '';
+    const productData = await fetchWooCommerceProducts(searchQuery, category, 100);
+    return res.status(200).json({
+      success: productData.success,
+      products: productData.products,
+      productSummary: productData.productSummary,
+      count: productData.count,
+      error: productData.error || null
+    });
+  }
+
+  // Only allow POST requests for webhook
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -119,7 +152,7 @@ export default async function handler(req, res) {
   try {
     const webhook = req.body;
     
-    // Step 1: Filter for messages (same logic as your Pipedream filter)
+    // Step 1: Filter for messages
     console.log("Webhook content field:", webhook.content);
     console.log("Webhook message_type:", webhook.message_type);
     console.log("Sender object:", webhook.sender);
@@ -131,9 +164,8 @@ export default async function handler(req, res) {
     const isNotPrivate = webhook.private !== true;
     const hasContent = webhook.content && webhook.content.trim() !== '';
     
-    // For contacts, the sender won't have certain agent-specific fields
-    // Let's check if this is NOT an agent by looking for agent-specific indicators
-    const isNotAgent = !webhook.sender.role && !webhook.sender.account_id;
+    // Check if sender is not an agent
+    const isNotAgent = !webhook.sender?.role && !webhook.sender?.account_id;
     
     console.log("Conditions check:");
     console.log("- Is incoming:", isIncoming);
@@ -157,13 +189,18 @@ export default async function handler(req, res) {
 
     const filterData = {
       should_process: true,
-      conversation_id: webhook.conversation.id,
+      conversation_id: webhook.conversation?.id || null,
       message_content: webhook.content,
-      account_id: webhook.account.id,
-      inbox_id: webhook.inbox.id,
-      sender_name: webhook.sender.name,
-      sender_email: webhook.sender.email
+      account_id: webhook.account?.id || null,
+      inbox_id: webhook.inbox?.id || null,
+      sender_name: webhook.sender?.name || 'Unknown',
+      sender_email: webhook.sender?.email || 'Unknown'
     };
+
+    // Validate required fields
+    if (!filterData.conversation_id || !filterData.account_id) {
+      throw new Error('Missing conversation_id or account_id');
+    }
 
     // === Enhanced WooCommerce product fetching ===
     console.log("Fetching product information...");
@@ -177,13 +214,15 @@ export default async function handler(req, res) {
     if (productIntent.hasProductIntent) {
       // Fetch specific products based on search terms
       console.log("Searching for specific products:", productIntent.searchQuery);
-      productData = await fetchWooCommerceProducts(productIntent.searchQuery, '', 15);
+      productData = await fetchWooCommerceProducts(productIntent.searchQuery, '', 100);
     } else {
-      // Fetch general product overview (fewer products for general queries)
+ machines    // Fetch general product overview
       console.log("Fetching general product overview");
-      productData = await fetchWooCommerceProducts('', '', 8);
+      productData = await fetchWooCommerceProducts('', '', 100);
     }
     
+    // Log fetched products for debugging
+    console.log("Fetched Products:", JSON.stringify(productData.products, null, 2));
     console.log(`Product fetch result: ${productData.success ? 'Success' : 'Failed'}, Count: ${productData.count}`);
     
     // === END Enhanced WooCommerce fetch ===
@@ -217,7 +256,7 @@ Sonderlösungen möglich.
 Datenschutz: Shop nicht greifbar für EU-Behörden; Daten nach 2 Wochen gelöscht.
 Keine Anmeldung; nur anonyme Zahlungen für max. IT-Sicherheit.
 
-Verweise immer wenn Wenn du Produkte erwähnst auf den Produkt Permalink.
+Verweise immer wenn du Produkte erwähnst auf den Produkt Permalink.
 Produkte: Betone Vorteile (z.B. Muskelaufbau, Regeneration). Priorisiere Medipharma (z.B. Testomed Enan 250 für Gains, Trenomed Ace 100 für Definition).
 Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking.
 Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50).
