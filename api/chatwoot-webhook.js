@@ -54,9 +54,34 @@ export default async function handler(req, res) {
       sender_email: webhook.sender.email
     };
 
+    // === Fetch product data from WooCommerce REST API ===
+    const wcApiUrl = 'https://blitzschnell.co/wp-json/wc/v3/products?per_page=10'; // adjust per_page as needed
+    const wcUser = process.env.WC_CONSUMER_KEY;
+    const wcPass = process.env.WC_CONSUMER_SECRET;
+    const wcAuth = Buffer.from(`${wcUser}:${wcPass}`).toString('base64');
+    let productSummary = '';
+    try {
+      const wcResponse = await fetch(wcApiUrl, {
+        headers: {
+          'Authorization': `Basic ${wcAuth}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (wcResponse.ok) {
+        const products = await wcResponse.json();
+        // Summarize product info for the prompt
+        productSummary = products.map(p =>
+          `• ${p.name}: ${(p.short_description || '').replace(/<[^>]+>/g, '')}`
+        ).join('\n');
+      } else {
+        productSummary = 'Produktinformationen konnten nicht geladen werden.';
+      }
+    } catch (err) {
+      productSummary = 'Produktinformationen konnten nicht geladen werden.';
+    }
+    // === END WooCommerce fetch ===
+
     // Step 2: Call OpenAI API
-    console.log("Processing message:", filterData.message_content);
-    
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -69,15 +94,17 @@ export default async function handler(req, res) {
           {
             role: 'system',
             content: `
-Du bist ein KI-Chatbot für den Onlineshop "Blitzschnell.co".
+Du bist ein KI-Chatbot für den Onlineshop \"Blitzschnell.co\".
 Antworte immer auf Deutsch, es sei denn, der Kunde schreibt in einer anderen Sprache.
+Hier sind die aktuellen Produktinformationen:
+${productSummary}
+
 Deine Aufgaben:
 - Hilf Kunden bei Fragen zu Produkten, Bestellungen, Versand, Rückgabe und Zahlungen.
 - Nutze folgende Informationsquellen:
   • Versandinformationen: https://blitzschnell.co/versand
   • Zahlungsarten: https://www.blitzschnell.co/zahlungsarten/
-  • Wissen über Produkte enteweder aus dem Blog: https://www.blitzschnell.co/wissen/ oder aus der 
-    Produktbeschreibung von der Produktseite (Beispiel: https://www.blitzschnell.co/shop/injektionen/10x-boldenone-undecylenate/) Produkte benutzen die standard WooCommerce felder für
+  • Wissen über Produkte entweder aus dem Blog: https://www.blitzschnell.co/wissen/ oder aus der Produktbeschreibung von der Produktseite.
 - Wenn du eine Frage nicht beantworten kannst, bitte den Kunden, sich an den menschlichen Support auf Telegram oder Signal zu wenden.
 - Sei stets freundlich, professionell und fasse dich kurz.
 - Gib keine Informationen weiter, die nicht auf den oben genannten Seiten stehen.
