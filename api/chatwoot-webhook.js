@@ -19,6 +19,9 @@ function searchProducts(query, products) {
   const searchTerm = query.toLowerCase();
   const results = [];
   
+  // Split query into individual words for better matching
+  const searchWords = searchTerm.split(' ').filter(word => word.length > 2);
+  
   for (const product of products) {
     const searchableText = [
       product.name,
@@ -30,8 +33,40 @@ function searchProducts(query, products) {
       product.trägerstoff
     ].join(' ').toLowerCase();
     
-    if (searchableText.includes(searchTerm)) {
+    // Check if any search word matches
+    let matchFound = false;
+    for (const word of searchWords) {
+      if (searchableText.includes(word)) {
+        matchFound = true;
+        break;
+      }
+    }
+    
+    // Also check if the full search term is included
+    if (searchableText.includes(searchTerm) || matchFound) {
       results.push(product);
+    }
+  }
+  
+  // If no results, try broader search for common terms
+  if (results.length === 0) {
+    const commonTerms = {
+      'testosteron': ['testosteron', 'testo', 'enanthate', 'propionate', 'cypionate'],
+      'peptide': ['peptide', 'ghrp', 'hgh', 'growth hormone'],
+      'steroide': ['steroide', 'steroid', 'anabol', 'injektion'],
+      'tabletten': ['tabletten', 'tablet', 'oral'],
+      'fatburner': ['fatburner', 'clenbuterol', 'clen', 'fat burner']
+    };
+    
+    for (const [category, terms] of Object.entries(commonTerms)) {
+      if (searchTerm.includes(category) || terms.some(term => searchTerm.includes(term))) {
+        const categoryProducts = products.filter(p => 
+          p.kategorien.toLowerCase().includes(category) ||
+          p.wirkstoff.toLowerCase().includes(category)
+        );
+        results.push(...categoryProducts.slice(0, 3));
+        break;
+      }
     }
   }
   
@@ -122,9 +157,40 @@ export default async function handler(req, res) {
     // Search for relevant products based on user message
     const relevantProducts = searchProducts(filterData.message_content, products);
     console.log(`Found ${relevantProducts.length} relevant products`);
+    
+    // Debug: Log what products were found
+    if (relevantProducts.length > 0) {
+      console.log('Found products:', relevantProducts.map(p => p.name));
+    } else {
+      console.log('No products found for query:', filterData.message_content);
+      // Try a broader search for "testosteron"
+      const testosteronProducts = products.filter(p => 
+        p.name.toLowerCase().includes('testosteron') || 
+        p.wirkstoff.toLowerCase().includes('testosteron') ||
+        p.kategorien.toLowerCase().includes('testosteron')
+      );
+      console.log(`Found ${testosteronProducts.length} testosterone products in total`);
+    }
 
     // Format product information for AI
-    const productInfo = formatProductInfo(relevantProducts);
+    let productsToShow = relevantProducts;
+    
+    // If no products found, include some popular testosterone products as fallback
+    if (relevantProducts.length === 0) {
+      const fallbackProducts = products.filter(p => 
+        p.name.toLowerCase().includes('testosteron') || 
+        p.wirkstoff.toLowerCase().includes('testosteron') ||
+        p.hersteller.toLowerCase().includes('medi pharma')
+      ).slice(0, 3);
+      
+      if (fallbackProducts.length > 0) {
+        productsToShow = fallbackProducts;
+        console.log('Using fallback products:', fallbackProducts.map(p => p.name));
+      }
+    }
+    
+    const productInfo = formatProductInfo(productsToShow);
+    console.log('Product info being sent to AI:', productInfo.substring(0, 200) + '...');
 
     // Step 2: Call OpenAI API
     console.log("Processing message:", filterData.message_content);
