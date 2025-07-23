@@ -17,7 +17,8 @@ function loadProducts() {
 // Search products based on query
 function searchProducts(query, products) {
   const searchTerm = query.toLowerCase();
-  const results = [];
+  const medipharmaResults = [];
+  const otherResults = [];
   
   // Split query into individual words for better matching
   const searchWords = searchTerm.split(' ').filter(word => word.length > 2);
@@ -44,12 +45,17 @@ function searchProducts(query, products) {
     
     // Also check if the full search term is included
     if (searchableText.includes(searchTerm) || matchFound) {
-      results.push(product);
+      // Prioritize Medipharma products
+      if (product.hersteller.toLowerCase().includes('medi pharma')) {
+        medipharmaResults.push(product);
+      } else {
+        otherResults.push(product);
+      }
     }
   }
   
   // If no results, try broader search for common terms
-  if (results.length === 0) {
+  if (medipharmaResults.length === 0 && otherResults.length === 0) {
     const commonTerms = {
       'testosteron': ['testosteron', 'testo', 'enanthate', 'propionate', 'cypionate'],
       'peptide': ['peptide', 'ghrp', 'hgh', 'growth hormone'],
@@ -64,13 +70,25 @@ function searchProducts(query, products) {
           p.kategorien.toLowerCase().includes(category) ||
           p.wirkstoff.toLowerCase().includes(category)
         );
-        results.push(...categoryProducts.slice(0, 3));
+        
+        // Separate Medipharma from other products in category search
+        const medipharmaCategory = categoryProducts.filter(p => 
+          p.hersteller.toLowerCase().includes('medi pharma')
+        );
+        const otherCategory = categoryProducts.filter(p => 
+          !p.hersteller.toLowerCase().includes('medi pharma')
+        );
+        
+        medipharmaResults.push(...medipharmaCategory.slice(0, 3));
+        otherResults.push(...otherCategory.slice(0, 2));
         break;
       }
     }
   }
   
-  return results.slice(0, 5); // Return top 5 matches
+  // Combine results with Medipharma products first, then others
+  const combinedResults = [...medipharmaResults, ...otherResults];
+  return combinedResults.slice(0, 5); // Return top 5 matches with Medipharma prioritized
 }
 
 // Format product information for AI
@@ -189,30 +207,49 @@ export default async function handler(req, res) {
     if (relevantProducts.length === 0) {
       console.log('No products found, using fallback search...');
       
-      // Try multiple fallback strategies
-      let fallbackProducts = [];
+      // Try multiple fallback strategies with Medipharma prioritization
+      let medipharmaFallback = [];
+      let otherFallback = [];
       
-      // Strategy 1: Look for testosterone products
-      fallbackProducts = products.filter(p => 
+      // Strategy 1: Look for testosterone products, prioritizing Medipharma
+      const testosteronProducts = products.filter(p => 
         p.name.toLowerCase().includes('testosteron') || 
         p.wirkstoff.toLowerCase().includes('testosteron') ||
         p.kategorien.toLowerCase().includes('testosteron')
       );
       
-      // Strategy 2: If still no results, look for Medi Pharma products
-      if (fallbackProducts.length === 0) {
-        fallbackProducts = products.filter(p => 
+      // Separate Medipharma testosterone products
+      medipharmaFallback = testosteronProducts.filter(p => 
+        p.hersteller.toLowerCase().includes('medi pharma')
+      );
+      otherFallback = testosteronProducts.filter(p => 
+        !p.hersteller.toLowerCase().includes('medi pharma')
+      );
+      
+      // Strategy 2: If no testosterone products, look for any Medipharma products
+      if (medipharmaFallback.length === 0) {
+        medipharmaFallback = products.filter(p => 
           p.hersteller.toLowerCase().includes('medi pharma')
         );
       }
       
       // Strategy 3: If still no results, just take first few products
-      if (fallbackProducts.length === 0) {
-        fallbackProducts = products.slice(0, 3);
+      if (medipharmaFallback.length === 0 && otherFallback.length === 0) {
+        const allMedipharma = products.filter(p => 
+          p.hersteller.toLowerCase().includes('medi pharma')
+        );
+        const allOthers = products.filter(p => 
+          !p.hersteller.toLowerCase().includes('medi pharma')
+        );
+        
+        medipharmaFallback = allMedipharma.slice(0, 2);
+        otherFallback = allOthers.slice(0, 1);
       }
       
-      if (fallbackProducts.length > 0) {
-        productsToShow = fallbackProducts.slice(0, 3);
+      // Combine with Medipharma products first
+      const combinedFallback = [...medipharmaFallback, ...otherFallback];
+      if (combinedFallback.length > 0) {
+        productsToShow = combinedFallback.slice(0, 3);
         console.log('Using fallback products:', productsToShow.map(p => p.name));
       }
     }
@@ -236,7 +273,8 @@ export default async function handler(req, res) {
             role: 'system',
             content: 'Du bist ein First-Layer-Support-Bot für blitzschnell.co, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen, etc. Verwende Emojis wo passend. Halte dich immer kurz und formatiere die Antworten. ' +
          '**Produktempfehlungen:** ' +
-         '- Priorisiere Produkte vom Hersteller Medipharma. ' +
+         '- Priorisiere IMMER Produkte vom Hersteller Medipharma (höchste Qualität, beste Reinheit). ' +
+         '- Wenn Medipharma-Produkte verfügbar sind, empfehle diese zuerst. ' +
          '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und verwende AUSSCHLIESSLICH die exakten Permalinks aus den Produktinformationen. ' +
          '**Versand:** ' +
          '- Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU). ' +
