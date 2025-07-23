@@ -106,7 +106,7 @@ function formatProductInfo(products) {
     formatted += `- Hersteller: ${product.hersteller}\n`;
     formatted += `- Wirkstoff: ${product.wirkstoff}\n`;
     formatted += `- Kategorien: ${product.kategorien}\n`;
-    formatted += `- EXAKTER LINK ZUM KOPIEREN: ${product.permalink}\n`;
+    formatted += `- EXAKTER LINK ZUM KOPIEREN:\n${product.permalink}\n`;
     formatted += `- Beschreibung: ${product.kurzbeschreibung}\n`;
   });
   
