@@ -42,7 +42,8 @@ function searchProducts(query, products) {
 function formatProductInfo(products) {
   if (products.length === 0) return '';
   
-  let formatted = '\n\n**Verfügbare Produkte (VERWENDE NUR DIESE EXAKTEN LINKS):**\n';
+  let formatted = '\n\n**PRODUKTINFORMATIONEN - VERWENDE NUR DIESE EXAKTEN LINKS:**\n';
+  formatted += '**WICHTIG: Kopiere die Links exakt wie sie hier stehen. Generiere KEINE eigenen URLs!**\n';
   
   products.forEach(product => {
     const price = product.angebotspreis || product.regulärer_preis;
@@ -52,7 +53,7 @@ function formatProductInfo(products) {
     formatted += `- Hersteller: ${product.hersteller}\n`;
     formatted += `- Wirkstoff: ${product.wirkstoff}\n`;
     formatted += `- Kategorien: ${product.kategorien}\n`;
-    formatted += `- EXAKTER LINK: ${product.permalink}\n`;
+    formatted += `- EXAKTER LINK ZUM KOPIEREN: ${product.permalink}\n`;
     formatted += `- Beschreibung: ${product.kurzbeschreibung}\n`;
   });
   
@@ -140,15 +141,18 @@ export default async function handler(req, res) {
           {
             role: 'system',
             content: 'Du bist ein First-Layer-Support-Bot für blitzschnell.co, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen, etc. Verwende Emojis wo passend. ' +
-         '**WICHTIG - PRODUKTLINKS:** ' +
-         '- VERWENDE NUR DIE EXAKTEN LINKS, die in den Produktinformationen bereitgestellt werden. ' +
-         '- Generiere KEINE eigenen Links oder URLs. ' +
-         '- Kopiere die Links exakt wie sie angezeigt werden. ' +
+         '**KRITISCHE REGEL - PRODUKTLINKS:** ' +
+         '- DU DARFST NUR DIE EXAKTEN LINKS VERWENDEN, die in den Produktinformationen stehen. ' +
+         '- VERBOTEN: Eigene Links generieren oder URLs erfinden. ' +
+         '- VERBOTEN: Links ändern oder modifizieren. ' +
+         '- VERBOTEN: Neue URLs erstellen. ' +
+         '- ERLAUBT: Nur die exakten Links aus den Produktinformationen kopieren. ' +
+         '- Wenn kein Link in den Produktinformationen steht, erwähne KEINE URL. ' +
          '**Produktempfehlungen:** ' +
          '- Priorisiere Medipharma (z.B. Testomed Enan 250 für Muskelaufbau, Trenomed Ace 100 für Definition). ' +
          '- Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking. ' +
          '- Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50). ' +
-         '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und verwende IMMER die exakten Permalinks aus den Produktinformationen. ' +
+         '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und verwende AUSSCHLIESSLICH die exakten Permalinks aus den Produktinformationen. ' +
          '**Versand:** ' +
          '- Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU). ' +
          '- Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage. ' +
@@ -177,6 +181,14 @@ export default async function handler(req, res) {
           {
             role: 'user',
             content: filterData.message_content
+          },
+          {
+            role: 'assistant',
+            content: 'Ich verstehe. Ich werde nur die exakten Links aus den bereitgestellten Produktinformationen verwenden und keine eigenen URLs generieren.'
+          },
+          {
+            role: 'user',
+            content: 'WICHTIG: Verwende AUSSCHLIESSLICH die exakten Links aus den Produktinformationen. Generiere KEINE eigenen URLs.'
           }
         ],
         max_tokens: 800,
