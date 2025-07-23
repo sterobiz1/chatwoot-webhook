@@ -92,8 +92,8 @@ function searchProducts(query, products) {
 function formatProductInfo(products) {
   if (products.length === 0) return '';
   
-  let formatted = '\n\n**PRODUKTINFORMATIONEN - VERWENDE NUR DIESE EXAKTEN LINKS:**\n';
-  formatted += '**WICHTIG: Kopiere die Links exakt wie sie hier stehen. Generiere KEINE eigenen URLs!**\n';
+  let formatted = '\n\n**VERFÜGBARE PRODUKTE MIT LINKS - VERWENDE DIESE LINKS:**\n';
+  formatted += '**ANWEISUNG: Gib diese exakten Links in deiner Antwort an. Kopiere sie genau wie sie hier stehen!**\n';
   
   products.forEach(product => {
     const price = product.angebotspreis || product.regulärer_preis;
@@ -103,7 +103,7 @@ function formatProductInfo(products) {
     formatted += `- Hersteller: ${product.hersteller}\n`;
     formatted += `- Wirkstoff: ${product.wirkstoff}\n`;
     formatted += `- Kategorien: ${product.kategorien}\n`;
-    formatted += `- EXAKTER LINK ZUM KOPIEREN: ${product.permalink}\n`;
+    formatted += `- PRODUKTLINK: ${product.permalink}\n`;
     formatted += `- Beschreibung: ${product.kurzbeschreibung}\n`;
   });
   
@@ -250,14 +250,14 @@ export default async function handler(req, res) {
           {
             role: 'system',
             content: 'Du bist ein First-Layer-Support-Bot für blitzschnell.co, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen, etc. Verwende Emojis wo passend. ' +
-         '**KRITISCHE REGEL - PRODUKTLINKS:** ' +
-         '- DU DARFST NUR DIE EXAKTEN LINKS VERWENDEN, die in den Produktinformationen stehen. ' +
+         '**WICHTIG - PRODUKTLINKS:** ' +
+         '- DU SOLLST IMMER die exakten Links aus den Produktinformationen verwenden und angeben. ' +
          '- VERBOTEN: Eigene Links generieren oder URLs erfinden. ' +
          '- VERBOTEN: Links ändern oder modifizieren. ' +
          '- VERBOTEN: Neue URLs erstellen. ' +
-         '- ERLAUBT: Nur die exakten Links aus den Produktinformationen kopieren. ' +
-         '- Wenn Produktinformationen bereitgestellt werden, MUSS du die Links verwenden. ' +
-         '- SAGE NICHT "ich kann dir keinen Link geben" wenn Produktinformationen vorhanden sind. ' +
+         '- VERBOTEN: Sagen "ich kann keine Links geben" wenn Produktinformationen mit Links vorhanden sind. ' +
+         '- ERLAUBT UND ERFORDERLICH: Die exakten Links aus den Produktinformationen kopieren und angeben. ' +
+         '- Wenn Produktinformationen mit Links bereitgestellt werden, MUSS du diese Links verwenden und angeben. ' +
          '**Produktempfehlungen:** ' +
          '- Priorisiere Hersteller Medipharma bei Produktempfehlungen.' +
          '- Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50). ' +
