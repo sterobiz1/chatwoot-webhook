@@ -42,7 +42,7 @@ function searchProducts(query, products) {
 function formatProductInfo(products) {
   if (products.length === 0) return '';
   
-  let formatted = '\n\n**Verfügbare Produkte:**\n';
+  let formatted = '\n\n**Verfügbare Produkte (VERWENDE NUR DIESE EXAKTEN LINKS):**\n';
   
   products.forEach(product => {
     const price = product.angebotspreis || product.regulärer_preis;
@@ -52,7 +52,7 @@ function formatProductInfo(products) {
     formatted += `- Hersteller: ${product.hersteller}\n`;
     formatted += `- Wirkstoff: ${product.wirkstoff}\n`;
     formatted += `- Kategorien: ${product.kategorien}\n`;
-    formatted += `- Link: ${product.permalink}\n`;
+    formatted += `- EXAKTER LINK: ${product.permalink}\n`;
     formatted += `- Beschreibung: ${product.kurzbeschreibung}\n`;
   });
   
@@ -140,11 +140,15 @@ export default async function handler(req, res) {
           {
             role: 'system',
             content: 'Du bist ein First-Layer-Support-Bot für blitzschnell.co, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen, etc. Verwende Emojis wo passend. ' +
+         '**WICHTIG - PRODUKTLINKS:** ' +
+         '- VERWENDE NUR DIE EXAKTEN LINKS, die in den Produktinformationen bereitgestellt werden. ' +
+         '- Generiere KEINE eigenen Links oder URLs. ' +
+         '- Kopiere die Links exakt wie sie angezeigt werden. ' +
          '**Produktempfehlungen:** ' +
          '- Priorisiere Medipharma (z.B. Testomed Enan 250 für Muskelaufbau, Trenomed Ace 100 für Definition). ' +
          '- Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking. ' +
          '- Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50). ' +
-         '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und füge immer den Permalink hinzu. ' +
+         '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und verwende IMMER die exakten Permalinks aus den Produktinformationen. ' +
          '**Versand:** ' +
          '- Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU). ' +
          '- Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage. ' +
