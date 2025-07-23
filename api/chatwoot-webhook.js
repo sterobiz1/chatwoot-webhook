@@ -153,6 +153,16 @@ export default async function handler(req, res) {
     // Load product data
     const products = loadProducts();
     console.log(`Loaded ${products.length} products`);
+    
+    // Debug: Check if we have testosterone products
+    const testosteronProducts = products.filter(p => 
+      p.name.toLowerCase().includes('testosteron') || 
+      p.wirkstoff.toLowerCase().includes('testosteron')
+    );
+    console.log(`Found ${testosteronProducts.length} testosterone products in database`);
+    if (testosteronProducts.length > 0) {
+      console.log('Sample testosterone products:', testosteronProducts.slice(0, 2).map(p => `${p.name} - ${p.permalink}`));
+    }
 
     // Search for relevant products based on user message
     const relevantProducts = searchProducts(filterData.message_content, products);
@@ -177,15 +187,33 @@ export default async function handler(req, res) {
     
     // If no products found, include some popular testosterone products as fallback
     if (relevantProducts.length === 0) {
-      const fallbackProducts = products.filter(p => 
+      console.log('No products found, using fallback search...');
+      
+      // Try multiple fallback strategies
+      let fallbackProducts = [];
+      
+      // Strategy 1: Look for testosterone products
+      fallbackProducts = products.filter(p => 
         p.name.toLowerCase().includes('testosteron') || 
         p.wirkstoff.toLowerCase().includes('testosteron') ||
-        p.hersteller.toLowerCase().includes('medi pharma')
-      ).slice(0, 3);
+        p.kategorien.toLowerCase().includes('testosteron')
+      );
+      
+      // Strategy 2: If still no results, look for Medi Pharma products
+      if (fallbackProducts.length === 0) {
+        fallbackProducts = products.filter(p => 
+          p.hersteller.toLowerCase().includes('medi pharma')
+        );
+      }
+      
+      // Strategy 3: If still no results, just take first few products
+      if (fallbackProducts.length === 0) {
+        fallbackProducts = products.slice(0, 3);
+      }
       
       if (fallbackProducts.length > 0) {
-        productsToShow = fallbackProducts;
-        console.log('Using fallback products:', fallbackProducts.map(p => p.name));
+        productsToShow = fallbackProducts.slice(0, 3);
+        console.log('Using fallback products:', productsToShow.map(p => p.name));
       }
     }
     
@@ -213,7 +241,8 @@ export default async function handler(req, res) {
          '- VERBOTEN: Links ändern oder modifizieren. ' +
          '- VERBOTEN: Neue URLs erstellen. ' +
          '- ERLAUBT: Nur die exakten Links aus den Produktinformationen kopieren. ' +
-         '- Wenn kein Link in den Produktinformationen steht, erwähne KEINE URL. ' +
+         '- Wenn Produktinformationen bereitgestellt werden, MUSS du die Links verwenden. ' +
+         '- SAGE NICHT "ich kann dir keinen Link geben" wenn Produktinformationen vorhanden sind. ' +
          '**Produktempfehlungen:** ' +
          '- Priorisiere Medipharma (z.B. Testomed Enan 250 für Muskelaufbau, Trenomed Ace 100 für Definition). ' +
          '- Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking. ' +
@@ -247,14 +276,6 @@ export default async function handler(req, res) {
           {
             role: 'user',
             content: filterData.message_content
-          },
-          {
-            role: 'assistant',
-            content: 'Ich verstehe. Ich werde nur die exakten Links aus den bereitgestellten Produktinformationen verwenden und keine eigenen URLs generieren.'
-          },
-          {
-            role: 'user',
-            content: 'WICHTIG: Verwende AUSSCHLIESSLICH die exakten Links aus den Produktinformationen. Generiere KEINE eigenen URLs.'
           }
         ],
         max_tokens: 800,
