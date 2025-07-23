@@ -5,9 +5,24 @@ import path from 'path';
 // Load product data
 function loadProducts() {
   try {
-    const productsPath = path.join(process.cwd(), 'data', 'products_reduced.json');
+    const productsPath = path.join(process.cwd(), 'data', 'products.json');
     const productsData = fs.readFileSync(productsPath, 'utf-8');
-    return JSON.parse(productsData);
+    const products = JSON.parse(productsData);
+    
+    // Convert to the format we need (extract relevant fields)
+    return products.map(product => ({
+      name: product.name,
+      kurzbeschreibung: product.kurzbeschreibung,
+      beschreibung: product.beschreibung,
+      angebotspreis: product.angebotspreis,
+      regulärer_preis: product.regulärer_preis,
+      kategorien: product.kategorien,
+      versandklasse: product.versandklasse,
+      hersteller: product.attribut_1_wert,
+      trägerstoff: product.attribut_2_wert,
+      wirkstoff: product.attribut_3_wert,
+      permalink: product.permalink || `https://www.blitzschnell.co/shop/injektionen/${product.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-')}/`
+    }));
   } catch (error) {
     console.error('Error loading products:', error);
     return [];
@@ -244,8 +259,7 @@ export default async function handler(req, res) {
          '- Wenn Produktinformationen bereitgestellt werden, MUSS du die Links verwenden. ' +
          '- SAGE NICHT "ich kann dir keinen Link geben" wenn Produktinformationen vorhanden sind. ' +
          '**Produktempfehlungen:** ' +
-         '- Priorisiere Medipharma (z.B. Testomed Enan 250 für Muskelaufbau, Trenomed Ace 100 für Definition). ' +
-         '- Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking. ' +
+         '- Priorisiere Hersteller Medipharma bei Produktempfehlungen.' +
          '- Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50). ' +
          '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und verwende AUSSCHLIESSLICH die exakten Permalinks aus den Produktinformationen. ' +
          '**Versand:** ' +
