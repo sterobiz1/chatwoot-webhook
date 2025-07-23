@@ -259,7 +259,7 @@ export default async function handler(req, res) {
          '- ERLAUBT UND ERFORDERLICH: Die exakten Links aus den Produktinformationen kopieren und angeben. ' +
          '- Wenn Produktinformationen mit Links bereitgestellt werden, MUSS du diese Links verwenden und angeben. ' +
          '**Produktempfehlungen:** ' +
-         '- Priorisiere Hersteller Medipharma bei Produktempfehlungen.' +
+         '- Priorisiere Hersteller Medipharma bei Produktempfehlungen. ' +
          '- Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50). ' +
          '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und verwende AUSSCHLIESSLICH die exakten Permalinks aus den Produktinformationen. ' +
          '**Versand:** ' +
