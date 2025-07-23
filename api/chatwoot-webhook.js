@@ -1,4 +1,64 @@
 // api/chatwoot-webhook.js
+import fs from 'fs';
+import path from 'path';
+
+// Load product data
+function loadProducts() {
+  try {
+    const productsPath = path.join(process.cwd(), 'data', 'products_reduced.json');
+    const productsData = fs.readFileSync(productsPath, 'utf-8');
+    return JSON.parse(productsData);
+  } catch (error) {
+    console.error('Error loading products:', error);
+    return [];
+  }
+}
+
+// Search products based on query
+function searchProducts(query, products) {
+  const searchTerm = query.toLowerCase();
+  const results = [];
+  
+  for (const product of products) {
+    const searchableText = [
+      product.name,
+      product.kurzbeschreibung,
+      product.beschreibung,
+      product.kategorien,
+      product.hersteller,
+      product.wirkstoff,
+      product.trägerstoff
+    ].join(' ').toLowerCase();
+    
+    if (searchableText.includes(searchTerm)) {
+      results.push(product);
+    }
+  }
+  
+  return results.slice(0, 5); // Return top 5 matches
+}
+
+// Format product information for AI
+function formatProductInfo(products) {
+  if (products.length === 0) return '';
+  
+  let formatted = '\n\n**Verfügbare Produkte:**\n';
+  
+  products.forEach(product => {
+    const price = product.angebotspreis || product.regulärer_preis;
+    const priceText = price ? `€${price}` : 'Preis auf Anfrage';
+    
+    formatted += `\n**${product.name}** (${priceText})\n`;
+    formatted += `- Hersteller: ${product.hersteller}\n`;
+    formatted += `- Wirkstoff: ${product.wirkstoff}\n`;
+    formatted += `- Kategorien: ${product.kategorien}\n`;
+    formatted += `- Link: ${product.permalink}\n`;
+    formatted += `- Beschreibung: ${product.kurzbeschreibung}\n`;
+  });
+  
+  return formatted;
+}
+
 export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -54,6 +114,17 @@ export default async function handler(req, res) {
       sender_email: webhook.sender.email
     };
 
+    // Load product data
+    const products = loadProducts();
+    console.log(`Loaded ${products.length} products`);
+
+    // Search for relevant products based on user message
+    const relevantProducts = searchProducts(filterData.message_content, products);
+    console.log(`Found ${relevantProducts.length} relevant products`);
+
+    // Format product information for AI
+    const productInfo = formatProductInfo(relevantProducts);
+
     // Step 2: Call OpenAI API
     console.log("Processing message:", filterData.message_content);
     
@@ -73,7 +144,7 @@ export default async function handler(req, res) {
          '- Priorisiere Medipharma (z.B. Testomed Enan 250 für Muskelaufbau, Trenomed Ace 100 für Definition). ' +
          '- Stacks: z.B. Medipharma Ripomed 250 + Akra Labs Akratropin für Bulking. ' +
          '- Kategorien: Steroide (Medipharma/Global Pharma), Peptide/HGH (Akra Labs), Fatburner/Tabletten (z.B. Oxymed 50). ' +
-         '- Nutze Produktinformationen wie Preis, Tags und Attribute, um Vorteile (z.B. Muskelaufbau, Regeneration) zu betonen, und füge immer den Permalink hinzu. ' +
+         '- Nutze die bereitgestellten Produktinformationen, um spezifische Empfehlungen zu geben und füge immer den Permalink hinzu. ' +
          '**Versand:** ' +
          '- Aus DE: 20€, Einwurf-Einschreiben (DE) oder Paket (EU). ' +
          '- Versand in 24h; Lieferzeit: DE 2-4 Werktage, EU 3-8 Werktage. ' +
@@ -96,14 +167,15 @@ export default async function handler(req, res) {
          '  - Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk ' +
          '**Paketstatus:** ' +
          '- Frage nach Bestellnummer; Status in Email. ' +
-         '- Sonst weiterleiten an Blitz über obige Kontakte.'
+         '- Sonst weiterleiten an Blitz über obige Kontakte.' +
+         productInfo
           },
           {
             role: 'user',
             content: filterData.message_content
           }
         ],
-        max_tokens: 500,
+        max_tokens: 800,
         temperature: 0.5
       })
     });
@@ -148,7 +220,8 @@ export default async function handler(req, res) {
       success: true,
       message_sent: aiResponse,
       chatwoot_response: chatwootData,
-      original_message: filterData.message_content
+      original_message: filterData.message_content,
+      products_found: relevantProducts.length
     });
 
   } catch (error) {
