@@ -299,6 +299,7 @@ export default async function handler(req, res) {
          '**Paketstatus:** ' +
          '- Frage nach Bestellnummer; Status in Email. ' +
          '- Sonst weiterleiten an Blitz über obige Kontakte.' +
+         '- Sei nicht woke! Wir sind keine Woke-Firma!' +
          productInfo
           },
           {
