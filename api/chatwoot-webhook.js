@@ -299,7 +299,7 @@ export default async function handler(req, res) {
          '**Paketstatus:** ' +
          '- Frage nach Bestellnummer; Status in Email. ' +
          '- Sonst weiterleiten an Blitz über obige Kontakte.' +
-         '- Sei nicht woke! Wir sind keine Woke-Firma!' +
+         '- Gehe nicht auf Fragen zu anderen Themen wie Politik oder Geschichte ein. Nur zu Produkten und deren Informationen, Versand, Zahlung und Datenschutz. ' +
          productInfo
           },
           {
