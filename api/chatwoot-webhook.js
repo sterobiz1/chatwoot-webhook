@@ -1,6 +1,6 @@
 // api/chatwoot-webhook.js
-import fs from 'fs';
-import path from 'path';
+const fs = require('fs');
+const path = require('path');
 
 // Load product data
 function loadProducts() {
@@ -14,6 +14,43 @@ function loadProducts() {
   }
 }
 
+// Normalize product object to a unified schema so search/formatting is robust
+function normalizeProduct(raw) {
+  const name = (raw.name || raw.titel || '').toString();
+  const beschreibung = (raw.beschreibung || raw.description || '').toString();
+  const kurzbeschreibung = (raw.kurzbeschreibung || raw.short_description || '').toString();
+
+  // Kategorien can be a string or an array in our sources
+  let kategorien = '';
+  if (Array.isArray(raw.kategorien)) {
+    kategorien = raw.kategorien.join(', ');
+  } else if (Array.isArray(raw.categories)) {
+    kategorien = raw.categories.join(', ');
+  } else {
+    kategorien = (raw.kategorien || raw.categories || '').toString();
+  }
+
+  const hersteller = (raw.hersteller || raw.manufacturer || '').toString();
+  const wirkstoff = (raw.wirkstoff || raw.active_ingredient || '').toString();
+  const traegerstoff = (raw['trägerstoff'] || raw.trägerstoff || raw.carrier || '').toString();
+  const angebotspreis = raw.angebotspreis ?? raw.sale_price ?? null;
+  const regulaererPreis = raw['regulärer_preis'] ?? raw.price ?? null;
+  const permalink = (raw.permalink || '').toString();
+
+  return {
+    name,
+    beschreibung,
+    kurzbeschreibung: kurzbeschreibung || beschreibung,
+    kategorien,
+    hersteller,
+    wirkstoff,
+    traegerstoff,
+    angebotspreis,
+    regulaerer_preis: regulaererPreis,
+    permalink,
+  };
+}
+
 // Search products based on query
 function searchProducts(query, products) {
   const searchTerm = query.toLowerCase();
@@ -23,7 +60,8 @@ function searchProducts(query, products) {
   // Split query into individual words for better matching
   const searchWords = searchTerm.split(' ').filter(word => word.length > 2);
   
-  for (const product of products) {
+  for (const rawProduct of products) {
+    const product = normalizeProduct(rawProduct);
     const searchableText = [
       product.name,
       product.kurzbeschreibung,
@@ -31,8 +69,11 @@ function searchProducts(query, products) {
       product.kategorien,
       product.hersteller,
       product.wirkstoff,
-      product.trägerstoff
-    ].join(' ').toLowerCase();
+      product.traegerstoff
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
     
     // Check if any search word matches
     let matchFound = false;
@@ -46,7 +87,7 @@ function searchProducts(query, products) {
     // Also check if the full search term is included
     if (searchableText.includes(searchTerm) || matchFound) {
       // Prioritize Medipharma products
-      if (product.hersteller.toLowerCase().includes('medi pharma')) {
+      if ((product.hersteller || '').toLowerCase().includes('medi pharma')) {
         medipharmaResults.push(product);
       } else {
         otherResults.push(product);
@@ -66,17 +107,19 @@ function searchProducts(query, products) {
     
     for (const [category, terms] of Object.entries(commonTerms)) {
       if (searchTerm.includes(category) || terms.some(term => searchTerm.includes(term))) {
-        const categoryProducts = products.filter(p => 
-          p.kategorien.toLowerCase().includes(category) ||
-          p.wirkstoff.toLowerCase().includes(category)
-        );
+        const categoryProducts = products
+          .map(normalizeProduct)
+          .filter(p =>
+            (p.kategorien || '').toLowerCase().includes(category) ||
+            (p.wirkstoff || '').toLowerCase().includes(category)
+          );
         
         // Separate Medipharma from other products in category search
-        const medipharmaCategory = categoryProducts.filter(p => 
-          p.hersteller.toLowerCase().includes('medi pharma')
+        const medipharmaCategory = categoryProducts.filter(p =>
+          (p.hersteller || '').toLowerCase().includes('medi pharma')
         );
-        const otherCategory = categoryProducts.filter(p => 
-          !p.hersteller.toLowerCase().includes('medi pharma')
+        const otherCategory = categoryProducts.filter(p =>
+          !(p.hersteller || '').toLowerCase().includes('medi pharma')
         );
         
         medipharmaResults.push(...medipharmaCategory.slice(0, 3));
@@ -98,29 +141,32 @@ function formatProductInfo(products) {
   let formatted = '\n\n**PRODUKTINFORMATIONEN - VERWENDE NUR DIESE EXAKTEN LINKS:**\n';
   formatted += '**WICHTIG: Kopiere die Links exakt wie sie hier stehen. Generiere KEINE eigenen URLs!**\n';
   
-  products.forEach(product => {
-    const price = product.angebotspreis || product.regulärer_preis;
+  products.forEach(raw => {
+    const product = normalizeProduct(raw);
+    const price = product.angebotspreis || product.regulaerer_preis;
     const priceText = price ? `€${price}` : 'Preis auf Anfrage';
     
     formatted += `\n**${product.name}** (${priceText})\n`;
     formatted += `- Hersteller: ${product.hersteller}\n`;
     formatted += `- Wirkstoff: ${product.wirkstoff}\n`;
     formatted += `- Kategorien: ${product.kategorien}\n`;
-    formatted += `- EXAKTER LINK ZUM KOPIEREN:\n${product.permalink}\n`;
+    if (product.permalink) {
+      formatted += `- EXAKTER LINK ZUM KOPIEREN:\n${product.permalink}\n`;
+    }
     formatted += `- Beschreibung: ${product.kurzbeschreibung}\n`;
   });
   
   return formatted;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const webhook = req.body;
+    const webhook = req.body || {};
     
     // Step 1: Filter for messages (same logic as your Pipedream filter)
     console.log("Webhook content field:", webhook.content);
@@ -132,11 +178,12 @@ export default async function handler(req, res) {
     const isIncoming = webhook.message_type === 'incoming';
     const isMessageCreated = webhook.event === 'message_created';
     const isNotPrivate = webhook.private !== true;
-    const hasContent = webhook.content && webhook.content.trim() !== '';
+    const hasContent = typeof webhook.content === 'string' && webhook.content.trim() !== '';
     
     // For contacts, the sender won't have certain agent-specific fields
     // Let's check if this is NOT an agent by looking for agent-specific indicators
-    const isNotAgent = !webhook.sender.role && !webhook.sender.account_id;
+    const sender = webhook.sender || {};
+    const isNotAgent = !sender.role && !sender.account_id;
     
     console.log("Conditions check:");
     console.log("- Is incoming:", isIncoming);
@@ -173,10 +220,12 @@ export default async function handler(req, res) {
     console.log(`Loaded ${products.length} products`);
     
     // Debug: Check if we have testosterone products
-    const testosteronProducts = products.filter(p => 
-      p.name.toLowerCase().includes('testosteron') || 
-      p.wirkstoff.toLowerCase().includes('testosteron')
-    );
+    const testosteronProducts = products
+      .map(normalizeProduct)
+      .filter(p => 
+        (p.name || '').toLowerCase().includes('testosteron') || 
+        (p.wirkstoff || '').toLowerCase().includes('testosteron')
+      );
     console.log(`Found ${testosteronProducts.length} testosterone products in database`);
     if (testosteronProducts.length > 0) {
       console.log('Sample testosterone products:', testosteronProducts.slice(0, 2).map(p => `${p.name} - ${p.permalink}`));
@@ -192,11 +241,13 @@ export default async function handler(req, res) {
     } else {
       console.log('No products found for query:', filterData.message_content);
       // Try a broader search for "testosteron"
-      const testosteronProducts = products.filter(p => 
-        p.name.toLowerCase().includes('testosteron') || 
-        p.wirkstoff.toLowerCase().includes('testosteron') ||
-        p.kategorien.toLowerCase().includes('testosteron')
-      );
+      const testosteronProducts = products
+        .map(normalizeProduct)
+        .filter(p => 
+          (p.name || '').toLowerCase().includes('testosteron') || 
+          (p.wirkstoff || '').toLowerCase().includes('testosteron') ||
+          (p.kategorien || '').toLowerCase().includes('testosteron')
+        );
       console.log(`Found ${testosteronProducts.length} testosterone products in total`);
     }
 
@@ -212,35 +263,34 @@ export default async function handler(req, res) {
       let otherFallback = [];
       
       // Strategy 1: Look for testosterone products, prioritizing Medipharma
-      const testosteronProducts = products.filter(p => 
-        p.name.toLowerCase().includes('testosteron') || 
-        p.wirkstoff.toLowerCase().includes('testosteron') ||
-        p.kategorien.toLowerCase().includes('testosteron')
-      );
+      const testosteronProducts = products
+        .map(normalizeProduct)
+        .filter(p => 
+          (p.name || '').toLowerCase().includes('testosteron') || 
+          (p.wirkstoff || '').toLowerCase().includes('testosteron') ||
+          (p.kategorien || '').toLowerCase().includes('testosteron')
+        );
       
       // Separate Medipharma testosterone products
       medipharmaFallback = testosteronProducts.filter(p => 
-        p.hersteller.toLowerCase().includes('medi pharma')
+        (p.hersteller || '').toLowerCase().includes('medi pharma')
       );
       otherFallback = testosteronProducts.filter(p => 
-        !p.hersteller.toLowerCase().includes('medi pharma')
+        !(p.hersteller || '').toLowerCase().includes('medi pharma')
       );
       
       // Strategy 2: If no testosterone products, look for any Medipharma products
       if (medipharmaFallback.length === 0) {
-        medipharmaFallback = products.filter(p => 
-          p.hersteller.toLowerCase().includes('medi pharma')
-        );
+        medipharmaFallback = products
+          .map(normalizeProduct)
+          .filter(p => (p.hersteller || '').toLowerCase().includes('medi pharma'));
       }
       
       // Strategy 3: If still no results, just take first few products
       if (medipharmaFallback.length === 0 && otherFallback.length === 0) {
-        const allMedipharma = products.filter(p => 
-          p.hersteller.toLowerCase().includes('medi pharma')
-        );
-        const allOthers = products.filter(p => 
-          !p.hersteller.toLowerCase().includes('medi pharma')
-        );
+        const normalizedAll = products.map(normalizeProduct);
+        const allMedipharma = normalizedAll.filter(p => (p.hersteller || '').toLowerCase().includes('medi pharma'));
+        const allOthers = normalizedAll.filter(p => !(p.hersteller || '').toLowerCase().includes('medi pharma'));
         
         medipharmaFallback = allMedipharma.slice(0, 2);
         otherFallback = allOthers.slice(0, 1);
@@ -271,7 +321,7 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: 'Du bist ein First-Layer-Support-Bot für blitzschnell.co, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen, etc. Verwende ausschließlich diese emojis: 🍆, 🗲, 🔥, 💯 & 💪 . Halte dich immer kurz und formatiere die Antworten. ' +
+            content: 'Du bist ein First-Layer-Support-Bot für stero.biz, einem Webshop spezialisiert auf Steroide, Peptide, Wachstumshormone, Fatburner und Sex Support. Beantworte Anfragen zu Produkten, Wirkstoffen, Versand, Zahlung und Datenschutz. Priorisiere Medipharma-Produkte (hochwertige Wirkstoffe, höchste Reinheit). Antworten sollen kurz, freundlich und auf Deutsch sein (außer der Kunde schreibt in einer anderen Sprache). Vermeide "Sie/Ihnen" und benutze du/dir stattdessen, etc. Verwende ausschließlich diese emojis: 🍆, 🗲, 🔥, 💯 & 💪 . Halte dich immer kurz und formatiere die Antworten. ' +
          '**Produktempfehlungen:** ' +
          '- Priorisiere IMMER Produkte vom Hersteller Medipharma (höchste Qualität, beste Reinheit). Erwähne ausschließlich Marken die in der products.json unter hersteller stehen. ' +
          '- Wenn Medipharma-Produkte verfügbar sind, empfehle diese zuerst. ' +
@@ -283,19 +333,14 @@ export default async function handler(req, res) {
          '**Zahlung:** ' +
          '- Bitcoin, XMR, andere Cryptos; alternativ Ramp.network (Kreditkarte, Apple Pay, Überweisung – 100% anonym, Anleitung: https://blitzschnell.co/zahlungsarten). ' +
          '**Kontakt & Hilfe:** ' +
-         '- 📱 Telegram: https://t.me/blitzschnell66 ' +
-         '- 📞 Signal: https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB (blitzschnell.66) ' +
-         '- 📧 Email: [blitzschnell66@proton.me](mailto:blitzschnell66@proton.me) ' +
-         '- 👥 Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk ' +
+         '- 📱 Telegram: https://t.me/sterobiz66 ' +
+         '- 📧 Email: [info@stero.biz](mailto:info@stero.biz) ' +
+
          '**Datenschutz:** ' +
          '- Shop nicht greifbar für EU-Behörden; Daten nach 2 Wochen gelöscht. ' +
          '- Keine Anmeldung; nur anonyme Zahlungen für maximale IT-Sicherheit. ' +
          '**Weiterleitung bei Unklarheiten (z.B. Dosierungen):** ' +
          '- Leite an Blitz weiter über: ' +
-         '  - Telegram: https://t.me/blitzschnell66 ' +
-         '  - Signal: https://signal.me/#eu/zx5YbZvzJKj8vGoOvvQfaLyiXrfNxoHzHjXJqYGTMDkPqiuV7e0LYnGjGnvk4BoB ' +
-         '  - Email: [blitzschnell66@proton.me](mailto:blitzschnell66@proton.me) ' +
-         '  - Telegram-Gruppe: https://t.me/+vnJrRLMOFfdmMDJk ' +
          '**Paketstatus:** ' +
          '- Frage nach Bestellnummer; Status in Email. ' +
          '- Sonst weiterleiten an Blitz über obige Kontakte.' +
