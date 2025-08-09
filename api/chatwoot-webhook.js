@@ -159,6 +159,23 @@ function formatProductInfo(products) {
   return formatted;
 }
 
+async function readRequestBody(req) {
+  // If body already parsed by runtime
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      try { return JSON.parse(req.body); } catch { return {}; }
+    }
+    return req.body;
+  }
+  // Fallback: read stream
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString('utf8');
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+
 module.exports = async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -166,7 +183,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const webhook = req.body || {};
+    const webhook = await readRequestBody(req);
     
     // Step 1: Filter for messages (same logic as your Pipedream filter)
     console.log("Webhook content field:", webhook.content);
@@ -183,7 +200,8 @@ module.exports = async function handler(req, res) {
     // For contacts, the sender won't have certain agent-specific fields
     // Let's check if this is NOT an agent by looking for agent-specific indicators
     const sender = webhook.sender || {};
-    const isNotAgent = !sender.role && !sender.account_id;
+    const senderType = (sender.type || '').toLowerCase();
+    const isNotAgent = senderType !== 'agent' && !sender.role && !sender.account_id;
     
     console.log("Conditions check:");
     console.log("- Is incoming:", isIncoming);
@@ -309,15 +327,21 @@ module.exports = async function handler(req, res) {
 
     // Step 2: Call OpenAI API
     console.log("Processing message:", filterData.message_content);
-    
+
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      throw new Error('Missing OPENAI_API_KEY');
+    }
+    const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: openaiModel,
         messages: [
           {
             role: 'system',
@@ -365,8 +389,11 @@ module.exports = async function handler(req, res) {
     console.log("AI Response:", aiResponse);
 
     // Step 3: Send response back to Chatwoot
-    const chatwootApiUrl = "https://app.chatwoot.com";
+    const chatwootApiUrl = process.env.CHATWOOT_BASE_URL || "https://app.chatwoot.com";
     const accessToken = process.env.CHATWOOT_ACCESS_TOKEN;
+    if (!accessToken) {
+      throw new Error('Missing CHATWOOT_ACCESS_TOKEN');
+    }
 
     console.log("Sending AI response to Chatwoot:", aiResponse);
     
