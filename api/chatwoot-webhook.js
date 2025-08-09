@@ -267,7 +267,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -311,12 +311,24 @@ export default async function handler(req, res) {
       })
     });
 
+    let aiResponse = '';
     if (!openaiResponse.ok) {
-      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+      const errText = await openaiResponse.text().catch(() => '');
+      console.error('OpenAI API error:', openaiResponse.status, errText);
+    } else {
+      try {
+        const openaiData = await openaiResponse.json();
+        aiResponse = openaiData?.choices?.[0]?.message?.content || '';
+      } catch (parseErr) {
+        console.error('Failed to parse OpenAI response JSON:', parseErr);
+      }
     }
 
-    const openaiData = await openaiResponse.json();
-    const aiResponse = openaiData.choices[0].message.content;
+    if (!aiResponse || aiResponse.trim() === '') {
+      aiResponse = `Danke für deine Nachricht: "${filterData.message_content}"
+
+Ich helfe dir gleich mit passenden Empfehlungen 💪`;
+    }
 
     console.log("AI Response:", aiResponse);
 
